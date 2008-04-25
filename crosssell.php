@@ -22,79 +22,7 @@ require_once 'debug.php'; # for getmicrotime()
 # Global
 $crosssell_voting_areas = array();
 
-// Choose appropriate advert and display it.
-// $this_site is to stop a site advertising itself.
-function crosssell_display_advert($this_site, $email = '', $name = '', $postcode = '', $adverts = array()) {
-
-    # Always try and display a HearFromYourCouncillor Cheltenham advert if possible
-    if ($this_site != 'hfyc')
-        if ($ad = crosssell_display_hfyc_cheltenham_advert($email, $name, $postcode))
-            return $ad;
-
-    # If we've been sent an array of adverts, pick one at random to display
-    while (count($adverts)) {
-        $rand = rand(0, count($adverts)-1);
-        list ($advert_site, $advert_text) = $adverts[$rand];
-	if ($this_site == 'twfy' && $advert_site == 'twfy_alerts')
-		return 'other-twfy-alert-type';
-        if (call_user_func('crosssell_display_random_' . $advert_site . '_advert', $email, $name, $postcode, $advert_text, $this_site))
-            return $advert_site . $rand;
-        # Failed to show an advert for $advert_site, remove all other $advert_site adverts from the selection
-        $new_adverts = array();
-        foreach ($adverts as $advert) {
-            if ($advert_site != $advert[0])
-                $new_adverts[] = $advert;
-        }
-        $adverts = $new_adverts;
-    }
-
-    if ($this_site != 'hfymp') 
-        if (crosssell_display_hfymp_advert($email, $name, $postcode))
-            return 'hfymp';
-    if ($this_site != 'twfy') {
-        if (crosssell_display_twfy_alerts_advert($this_site, $email, $postcode))
-            return 'twfy';
-    } else {
-        return 'other-twfy-alert-type';
-    }
-    if ($this_site != 'pb') {
-        crosssell_display_pb_advert();
-        return 'pb';
-    }
-    return '';
-}
-
 /* Random adverts, text supplied by caller */
-
-/* This advert will always display if picked */
-function crosssell_display_random_fms_advert($email, $name, $postcode, $text, $this_site) {
-    echo '<div id="advert_thin" style="text-align:center; font-size:150%">',
-        $text, '</div>';
-    return true;
-}
-
-/* This advert will always display if picked */
-function crosssell_display_random_gny_advert($email, $name, $postcode, $text, $this_site) {
-    echo '<div id="advert_thin">', $text, '</div>';
-    return true;
-}
-
-function crosssell_display_random_hfymp_advert($email, $name, $postcode, $text, $this_site) {
-    $auth_signature = crosssell_check_hfymp($email);
-    if (!$auth_signature) return false;
-
-    $text = str_replace('[form]', '
-<form action="http://www.hearfromyourmp.com/" method="post">
-<input type="hidden" name="name" value="' . htmlspecialchars($name) . '">
-<input type="hidden" name="email" value="' . htmlspecialchars($email) . '">
-<input type="hidden" name="postcode" value="' . htmlspecialchars($postcode) . '">
-<input type="hidden" name="sign" value="' . htmlspecialchars($auth_signature) . '">
-<h2><input style="font-size:100%" type="submit" value="', $text);
-    $text = str_replace('[/form]', '"></h2>', $text);
-
-    echo '<div style="text-align:center">', $text, '</div>';
-    return true;
-}
 
 function crosssell_display_random_twfy_alerts_advert($email, $name, $postcode, $text, $this_site) {
     $check = crosssell_check_twfy($email, $postcode);
@@ -125,74 +53,6 @@ function crosssell_display_random_twfy_alerts_advert($email, $name, $postcode, $
 
 /* Okay, now the static adverts, not being shown at random */
 
-function crosssell_display_hfymp_advert($email, $name, $postcode) {
-    $auth_signature = crosssell_check_hfymp($email);
-    if (!$auth_signature) return false;
-
-?>
-<form action="http://www.hearfromyourmp.com/" method="post">
-<input type="hidden" name="name" value="<?=htmlspecialchars($name)?>">
-<input type="hidden" name="email" value="<?=htmlspecialchars($email)?>">
-<input type="hidden" name="postcode" value="<?=htmlspecialchars($postcode)?>">
-<input type="hidden" name="sign" value="<?=htmlspecialchars($auth_signature)?>">
-<h2 style="padding: 1em; font-size: 200%" align="center">
-Meanwhile...<br>
-<input style="font-size:100%" type="submit" value="Start a long term relationship"><br> with your MP
-</h2>
-<?
-    return true;
-}
-
-function crosssell_display_hfyc_cheltenham_advert($email, $name, $postcode) {
-    if (!defined('OPTION_AUTH_SHARED_SECRET') || !$postcode)
-        return false;
-
-    global $crosssell_voting_areas;
-    if (!$crosssell_voting_areas)
-        $crosssell_voting_areas = mapit_get_voting_areas($postcode);
-    if (!isset($crosssell_voting_areas['DIS']) || $crosssell_voting_areas['DIS'] != 2326)
-        return false;
-
-    $auth_signature = auth_sign_with_shared_secret($email, OPTION_AUTH_SHARED_SECRET);
-
-    // See if already signed up
-    $already_signed = crosssell_fetch_page('cheltenham.hearfromyourcouncillor.com', '/authed?email='.urlencode($email)."&sign=".urlencode($auth_signature));
-    if ($already_signed != 'not signed') 
-        return false;
-
-    // If not, display one of two adverts
-    $rand = rand(0, 1);
-?>
-<form action="http://cheltenham.hearfromyourcouncillor.com/" method="post">
-<input type="hidden" name="name" value="<?=htmlspecialchars($name)?>">
-<input type="hidden" name="email" value="<?=htmlspecialchars($email)?>">
-<input type="hidden" name="postcode" value="<?=htmlspecialchars($postcode)?>">
-<input type="hidden" name="sign" value="<?=htmlspecialchars($auth_signature)?>">
-
-<div id="advert_thin">
-<?
-
-    if ($rand == 0) {
-        echo "<h2>Cool! You live in Cheltenham!</h2> <p>We've got an exciting new free
-        service that works exclusively for people in Cheltenham. Please sign
-        up to help the charity that runs WriteToThem, and to get a sneak
-        preview of our new service.</p>";
-    } else {
-        echo "<h2>Get to know your councillors.</h2>
-        <p>Local councillors are really important, but hardly anyone knows them.
-        Use our new free service to build a low-effort, long term relationship
-        with your councillor.</p>";
-    }
-    ?>
-<p align="center">
-<input type="submit" value="Sign up to HearFromYourCouncillor">
-</p>
-</div>
-</form>
-<?
-    return "cheltenhamhfyc$rand";
-}
-
 # XXX: Needs to say "Lord" when the WTT message was to a Lord!
 function crosssell_display_twfy_alerts_advert($this_site, $email, $postcode) {
     $check = crosssell_check_twfy($email, $postcode);
@@ -218,28 +78,7 @@ can unsubscribe at any time.
     return true;
 }
 
-function crosssell_display_pb_advert() {
-?>
-<h2 style="padding: 1em; font-size: 200%" align="center">
-Have you ever wanted to <a href="http://www.pledgebank.com">change the world</a> but stopped short because no-one would help?</h2>
-<?
-}
-
 /* Checking functions for sites, to see if you're already signed up or whatever */
-
-function crosssell_check_hfymp($email) {
-    if (!defined('OPTION_AUTH_SHARED_SECRET'))
-        return false;
-
-    $auth_signature = auth_sign_with_shared_secret($email, OPTION_AUTH_SHARED_SECRET);
-
-    // See if already signed up
-    $already_signed = crosssell_fetch_page('www.hearfromyourmp.com', '/authed?email='.urlencode($email).'&sign='.urlencode($auth_signature));
-    if ($already_signed != 'not signed') 
-        return false;
-
-    return $auth_signature;
-}
 
 function crosssell_check_twfy($email, $postcode) {
     if (!defined('OPTION_AUTH_SHARED_SECRET') || !$postcode)
